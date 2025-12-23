@@ -9,8 +9,7 @@
 
 **ARU** is a next-generation Recurrent Neural Network architecture that challenges the status quo of gated sequence modeling. It decouples **memory retention** from **information injection**, achieving true additive accumulation—a feat that standard GRUs and LSTMs struggle to perform mathematically.
 
----
-## 🎓 Origin Story: Born from the Classroom
+---\n## 🎓 Origin Story: Born from the Classroom
 
 The concept of ARU wasn't born in a corporate lab, but from a moment of clarity during a **Natural Language Processing (NLP)** course.
 
@@ -20,8 +19,7 @@ This observation sparked a question: **Can we design a unit that can remember fo
 
 The answer is **ARU**.
 
----
-## ⚡ The Theory: The Architecture of Addition
+---\n## ⚡ The Theory: The Architecture of Addition
 
 ARU introduces a **Three-Gate Architecture** that replaces the "convex combination" (weighted averaging) of GRUs with independent control mechanisms.
 
@@ -45,8 +43,7 @@ $$ \Large h_t = \rho_t \odot (\pi_t \odot h_{t-1} + \alpha_t \odot v_t) $$
 
 This decoupling allows ARU to perform **Counting** ($h_t = h_{t-1} + 1$) and **Copying** ($h_t = h_{t-1}$) perfectly, without the mathematical decay inherent in other models.
 
----
-## 🧪 The Evidence: Benchmark Phases
+---\n## 🧪 The Evidence: Benchmark Phases
 
 We didn't just build it; we proved it. The ARU has been subjected to 5 phases of rigorous testing against industry-standard baselines.
 
@@ -60,7 +57,15 @@ We didn't just build it; we proved it. The ARU has been subjected to 5 phases of
 
 > **tl;dr:** ARU matches GRU on standard tasks but **crushes** it on tasks requiring long-term memory or precise counting.
 
----
+---\n
+## 📦 Installation
+
+```bash
+git clone https://github.com/abderahmane-ai/additive-recurrent-unit.git
+cd additive-recurrent-unit
+pip install torch rich
+```
+
 ## 💻 Usage
 
 ARU is a drop-in replacement for standard PyTorch RNNs. It is fully JIT-compiled for speed.
@@ -91,9 +96,6 @@ output = model(x)
 Science needs verification. You can reproduce any phase of our benchmarks by running the scripts directly as modules:
 
 ```bash
-# Install dependencies
-pip install torch rich
-
 # Phase 1: Classification
 python -m benchmarks.phase1.ag_news_benchmark
 
@@ -123,7 +125,7 @@ If you use ARU in your research or project, please cite:
   year = {2025},
   publisher = {GitHub},
   journal = {GitHub repository},
-  howpublished = {\url{https://github.com/yourusername/aru}}
+  howpublished = {\url{https://github.com/abderahmane-ai/additive-recurrent-unit}}
 }
 ```
 
@@ -131,7 +133,6 @@ If you use ARU in your research or project, please cite:
 
 Distributed under the MIT License. Go forth and add.
 
----
-<div align="center">
+---\n<div align="center">
   <sub>Designed with precision. Built for the future.</sub>
 </div>
