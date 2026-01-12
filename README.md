@@ -27,7 +27,9 @@ ARU introduces a **Three-Gate Architecture** that replaces the "convex combinati
 
 ### The Problem with GRUs
 The standard GRU update rule is:
+
 $$ h_t = (1 - z_t) h_{t-1} + z_t \tilde{h}_t $$
+
 *   **The Trap:** If $z_t \approx 1$ (learn new), then $(1-z_t) \approx 0$ (forget old). You cannot have both.
 
 ### The ARU Solution
