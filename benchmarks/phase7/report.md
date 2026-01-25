@@ -31,7 +31,9 @@ The Electricity Transformer Temperature (ETT) dataset is a standard benchmark fo
 ### Key Observations
 
 ✅ **Superior Long-Term Forecasting** - ARU's MSE of 0.4552 represents a 52.7% improvement over GRU and 40.8% improvement over LSTM on the 720-step horizon.
+
 ✅ **Real-World Validation** - Unlike synthetic benchmarks, ETT contains noise, non-stationarity, and complex multi-scale patterns typical of industrial time series.
+
 ✅ **Efficient Inference** - ARU achieved the best accuracy while also having the fastest inference time (1.06s vs 1.66-1.70s for baselines).
 
 ---
