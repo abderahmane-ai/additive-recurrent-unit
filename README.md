@@ -50,7 +50,7 @@ This decoupling allows ARU to perform **Counting** ($h_t = h_{t-1} + 1$) and **C
 ---
 ## 🧪 The Evidence: Benchmark Phases
 
-We didn't just build it; we proved it. The ARU has been subjected to 6 phases of rigorous testing against industry-standard baselines.
+We didn't just build it; we proved it. The ARU has been subjected to 7 phases of rigorous testing against industry-standard baselines.
 
 | Phase | Benchmark Task | Core Challenge | Winner | Report |
 | :---: | :--- | :--- | :---: | :---: |
@@ -61,8 +61,9 @@ We didn't just build it; we proved it. The ARU has been subjected to 6 phases of
 | **5** | **Adding Problem** | Information Latching | *Tie (GRU/ARU)* | [📄 View Report](benchmarks/phase5/report.md) |
 | **6a** | **Matrix: Bullet Dodge** | 3D Trajectory Prediction | 👑 **ARU** | [📄 View Report](benchmarks/phase6/matrix_report.md) |
 | **6b** | **Inception: Dream Layers** | Multi-Scale Temporal Integration | 👑 **ARU** | [📄 View Report](benchmarks/phase6/inception_report.md) |
+| **7** | **ETT Time Series** | Long-Term Forecasting | 👑 **ARU** | [📄 View Report](benchmarks/phase7/report.md) |
 
-> **tl;dr:** ARU matches GRU on standard tasks but **crushes** it on tasks requiring long-term memory, precise counting, continuous integration, and hierarchical temporal reasoning.
+> **tl;dr:** ARU matches GRU on standard tasks but **crushes** it on tasks requiring long-term memory, precise counting, continuous integration, hierarchical temporal reasoning, and long-term time series forecasting.
 
 ---
 ## 📦 Installation
