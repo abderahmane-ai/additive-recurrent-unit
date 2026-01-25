@@ -4,6 +4,8 @@
 
 This benchmark tests a model's ability to integrate information across **hierarchical sequences with nested time scales**—simulating the "dream within a dream" structure from the movie *Inception*. **ARU achieved a Mean Squared Error (MSE) of 0.0030**, outperforming GRU (0.0062) by **51.3%** and LSTM (0.0124) by **75.8%**. This confirms ARU's exceptional ability to maintain long-term context (persistence) while simultaneously accumulating fine-grained details across varying temporal resolutions.
 
+**Note:** This benchmark was developed with AI assistance as part of the ARU research project.
+
 ---
 
 ## Inspired by Inception (2010)
@@ -21,17 +23,17 @@ In the film, time moves at different speeds in each dream layer: 5 minutes in re
 | **Task** | Integrate information across nested hierarchical layers |
 | **Sequence Length** | 100 timesteps (Reality Time) |
 | **Number of Layers** | 4 (Reality + 3 Dream Layers) |
-| **Time Scales** | 1x, 5x, 20x, 20x (nested) |
+| **Time Scales** | 1x, 5x, 20x, 20x |
 | **Goal** | Regress the final aggregated value of the entire hierarchical system |
 | **Challenge** | Maintain separate memory states for slow vs. fast evolving layers |
 
 ### The "Dream" Physics
 
-The input $X_t$ is a concatenation of disjoint signals operating at different frequencies:
-- **Reality (Layer 0)**: Base frequency $f$, noise $\epsilon_0$
-- **Level 1 (Layer 1)**: Frequency $5f$, noise $\epsilon_1$, contribution weighted by $1/2$
-- **Level 2 (Layer 2)**: Frequency $100f$, noise $\epsilon_2$, contribution weighted by $1/4$
-- **Level 3 (Layer 3)**: Frequency $2000f$, noise $\epsilon_3$, contribution weighted by $1/8$
+The input $X_t$ is a concatenation of disjoint signals operating at different time scales:
+- **Reality (Layer 0)**: 1x time scale, contribution weighted by $1/1$
+- **Level 1 (Layer 1)**: 5x time scale, contribution weighted by $1/2$
+- **Level 2 (Layer 2)**: 20x time scale, contribution weighted by $1/4$
+- **Level 3 (Layer 3)**: 20x time scale, contribution weighted by $1/8$
 
 The model must "synchronize the kick" by correctly accumulating the weighted sum of all layers at the final timestep.
 
@@ -79,6 +81,4 @@ The task requires keeping Layer 0 separate from Layer 3. ARU's simple linear str
 
 ## Conclusion
 
-The **Inception Benchmark** demonstrates that ARU is the superior architecture for **multi-scale temporal integration**.
-
-When data contains both slow-moving context (the plot) and fast-moving details (the action), ARU's additive design allows it to act as a **multi-band pass filter**, perfectly preserving the slow components via persistence while integrating the fast components via accumulation. This makes it an ideal candidate for hierarchical tasks in finance (tick vs. trend), audio (sample vs. note), and video (frame vs. scene).
+The Inception Nested Dream Layers benchmark demonstrates that ARU is the superior architecture for **multi-scale temporal integration**. The 51.3% error reduction over GRU confirms that when data contains both slow-moving context and fast-moving details, ARU's additive design allows it to act as a **multi-band pass filter**, perfectly preserving slow components via persistence while integrating fast components via accumulation.

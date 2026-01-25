@@ -4,6 +4,8 @@
 
 This benchmark tests a model's ability to predict future 3D trajectories of multiple projectiles governed by realistic physics (gravity and air resistance). **ARU achieved a mean prediction error of 7.46 meters**, outperforming GRU (11.94m) by **37.5%** and LSTM (10.76m) by **30.7%**. This confirms ARU's suitability for continuous-state trajectory prediction tasks requiring integration of velocity information over time.
 
+**Note:** This benchmark was developed with AI assistance as part of the ARU research project.
+
 ---
 
 ## Inspired by The Matrix (1999)
@@ -152,12 +154,6 @@ This benchmark demonstrates capabilities relevant to:
 
 ## Conclusion
 
-Phase 6 validates ARU's effectiveness on **continuous physics-based prediction** tasks. The 37.5% error reduction over GRU stems from ARU's architectural alignment with the mathematical structure of the problem: trajectory prediction requires *integration*, not *interpolation*.
+The Matrix Bullet Dodge benchmark validates ARU's effectiveness on **continuous physics-based prediction** tasks. The 37.5% error reduction over GRU stems from ARU's architectural alignment with the mathematical structure of the problem: trajectory prediction requires *integration*, not *interpolation*.
 
-This benchmark complements Phase 4 (discrete event counting) by demonstrating ARU's versatility across both discrete accumulation and continuous integration regimes. The superior performance arises from the same core principle: **additive state updates** better preserve information flow in accumulation-dominated tasks.
-
-### Future Extensions
-
-- **Adaptive Physics**: Test on scenarios with varying gravity/air resistance
-- **Occlusion Handling**: Partial observations with missing bullets
-- **Interactive Agents**: Predict trajectories that respond to the model's own movements (true dodging)
+The superior performance arises from ARU's core principle: **additive state updates** better preserve information flow in integration-dominated tasks, making it ideal for continuous-valued state evolution like 3D trajectory forecasting.
