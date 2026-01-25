@@ -321,12 +321,12 @@ def evaluate_counting(model, sequences, targets, criterion, device, batch_size=6
     return avg_loss, metrics
 
 def run_counting_benchmark(config: dict, seed: int = 42, aru_only: bool = False):
-    """Run Sparse Event Counting benchmark."""
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    
+    """Run Sparse Event Counting benchmark with multiple seeds for statistical significance."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     console.print(f"\n[green]Device:[/green] {device}\n")
+    
+    num_runs = config.get('num_runs', 1)
+    console.print(f"[cyan]Number of runs:[/cyan] {num_runs}\n")
     
     try:
         (train_sequences, train_targets), (valid_sequences, valid_targets), (test_sequences, test_targets) = \
@@ -346,223 +346,192 @@ def run_counting_benchmark(config: dict, seed: int = 42, aru_only: bool = False)
     else:
         output_size = config['num_event_types']
     
-    models = {
-        'ARU': ARU(
-            input_size,
-            config['hidden_size'],
-            num_classes=output_size,
-            dropout=config['dropout'],
-            use_embedding=True,
-            persistence_init=3.0,  # Higher init for maintaining counts
-            accumulation_init=-1.0,  # Start with lower accumulation gate
-        ),
-    }
+    model_names = ['ARU'] if aru_only else ['ARU', 'GRU', 'LSTM', 'RNN']
     
-    if not aru_only:
-        models.update({
-            'GRU': ManualGRU(
+    # Store results across all runs
+    all_results = {name: {'test_mae': [], 'test_rmse': [], 'test_exact_match': [], 'train_time': []} for name in model_names}
+    
+    # Run each model multiple times
+    for run_idx in range(num_runs):
+        run_seed = seed + 1000 * (run_idx + 1)
+        console.print(f"\n[bold yellow]{'='*60}[/bold yellow]")
+        console.print(f"[bold yellow]Run {run_idx + 1}/{num_runs} (seed={run_seed})[/bold yellow]")
+        console.print(f"[bold yellow]{'='*60}[/bold yellow]\n")
+        
+        torch.manual_seed(run_seed)
+        np.random.seed(run_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(run_seed)
+        
+        models = {
+            'ARU': ARU(
                 input_size,
                 config['hidden_size'],
                 num_classes=output_size,
                 dropout=config['dropout'],
-                use_embedding=True
+                use_embedding=True,
+                persistence_init=3.0,
+                accumulation_init=-1.0,
             ),
-            'LSTM': ManualLSTM(
-                input_size,
-                config['hidden_size'],
-                num_classes=output_size,
-                dropout=config['dropout'],
-                use_embedding=True
-            ),
-            'RNN': ManualRNN(
-                input_size,
-                config['hidden_size'],
-                num_classes=output_size,
-                dropout=config['dropout'],
-                use_embedding=True
-            ),
-        })
-    
-    results = {}
-    
-    for name, model in models.items():
-        try:
-            model = model.to(device)
-            
-            criterion = nn.MSELoss()  # Regression task
-            optimizer = optim.Adam(model.parameters(), lr=config['lr'])
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode='min', factor=0.5, patience=4
-            )
-            
-            params = count_parameters(model)
-            console.print(f"\n[bold cyan]Training {name}[/bold cyan]")
-            console.print(f"[yellow]Parameters:[/yellow] {params:,}")
-            
-            # Format model specs with proper indentation
-            model_str = str(model)
-            lines = model_str.split('\n')
-            console.print(f"[green]Specs:[/green] {lines[0]}")
-            for line in lines[1:]:
-                console.print(f"  {line}")
-            
-            best_val_mae = float('inf')
-            best_model_state = None
-            patience_counter = 0
-            start_time = time.time()
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                TimeElapsedColumn(),
-                console=console
-            ) as progress:
-                task = progress.add_task(f"[cyan]{name}", total=config['epochs'])
+        }
+        
+        if not aru_only:
+            models.update({
+                'GRU': ManualGRU(input_size, config['hidden_size'], num_classes=output_size, dropout=config['dropout'], use_embedding=True),
+                'LSTM': ManualLSTM(input_size, config['hidden_size'], num_classes=output_size, dropout=config['dropout'], use_embedding=True),
+                'RNN': ManualRNN(input_size, config['hidden_size'], num_classes=output_size, dropout=config['dropout'], use_embedding=True),
+            })
+        
+        for name, model in models.items():
+            try:
+                model = model.to(device)
                 
-                for epoch in range(1, config['epochs'] + 1):
-                    train_loss, train_metrics = train_epoch_counting(
-                        model, train_sequences, train_targets, criterion, optimizer, device,
-                        batch_size=config['batch_size']
-                    )
-                    val_loss, val_metrics = evaluate_counting(
-                        model, valid_sequences, valid_targets, criterion, device,
-                        batch_size=config['batch_size']
-                    )
-                    
-                    scheduler.step(val_metrics['mae'])
-                    
-                    if val_metrics['mae'] < best_val_mae:
-                        best_val_mae = val_metrics['mae']
-                        best_model_state = copy.deepcopy(model.state_dict())
-                        patience_counter = 0
-                    else:
-                        patience_counter += 1
-                    
-                    progress.update(
-                        task, advance=1,
-                        description=f"[cyan]{name} - Val MAE: {val_metrics['mae']:.2f} (Best: {best_val_mae:.2f})"
-                    )
-                    
-                    if patience_counter >= config['patience']:
-                        console.print(f"[yellow]Early stopping at epoch {epoch}[/yellow]")
-                        break
-            
-            train_time = time.time() - start_time
-            
-            if best_model_state is not None:
-                model.load_state_dict(best_model_state)
-            
-            model.eval()
-            test_loss, test_metrics = evaluate_counting(
-                model, test_sequences, test_targets, criterion, device,
-                batch_size=config['batch_size']
-            )
-            
-            # Show sample predictions on new test data
-            console.print(f"\n[bold yellow]Testing {name} on new counting sequences:[/bold yellow]")
-            with torch.no_grad():
-                sample_seqs = test_sequences[:5].to(device)
-                sample_targets = test_targets[:5].to(device)
-                sample_outputs = model(sample_seqs)
-                sample_preds = sample_outputs.squeeze(-1)
+                criterion = nn.MSELoss()
+                optimizer = optim.Adam(model.parameters(), lr=config['lr'])
+                scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=4)
                 
-                for i in range(5):
-                    true_count = sample_targets[i].item()
-                    pred_count = sample_preds[i].item()
-                    error = abs(pred_count - true_count)
-                    status = "✓" if error < 0.5 else "✗"
+                params = count_parameters(model)
+                
+                if run_idx == 0:
+                    console.print(f"\n[bold cyan]Training {name}[/bold cyan] ({params:,} params)")
+                else:
+                    console.print(f"\n[cyan]Training {name}[/cyan]")
+                
+                best_val_mae = float('inf')
+                best_model_state = None
+                patience_counter = 0
+                start_time = time.time()
+                
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                    TimeElapsedColumn(),
+                    console=console
+                ) as progress:
+                    task = progress.add_task(f"[cyan]{name}", total=config['epochs'])
                     
-                    # Count actual events in sequence (non-zero values)
-                    events = (sample_seqs[i] > 0).sum().item()
-                    
-                    console.print(f"  {status} Sample {i+1}: Events={events}, "
-                                f"True count={true_count:.0f}, "
-                                f"Predicted={pred_count:.1f}, "
-                                f"Error={error:.2f}")
-            
-            model.train()
-            
-            results[name] = {
-                'params': params,
-                'best_val_mae': best_val_mae,
-                'test_mae': test_metrics['mae'],
-                'test_rmse': test_metrics['rmse'],
-                'test_exact_match': test_metrics['exact_match'],
-                'test_within_1': test_metrics['within_1'],
-                'test_within_2': test_metrics['within_2'],
-                'train_time': train_time
-            }
-            
-            console.print(
-                f"[green]✓[/green] {name} completed - "
-                f"Test MAE: {test_metrics['mae']:.2f} | "
-                f"Exact: {test_metrics['exact_match']:.1f}%"
-            )
-            
-        except Exception as e:
-            console.print(f"[bold red]Error training {name}:[/bold red] {e}")
-            import traceback
-            traceback.print_exc()
-            continue
+                    for epoch in range(1, config['epochs'] + 1):
+                        train_loss, train_metrics = train_epoch_counting(
+                            model, train_sequences, train_targets, criterion, optimizer, device,
+                            batch_size=config['batch_size']
+                        )
+                        val_loss, val_metrics = evaluate_counting(
+                            model, valid_sequences, valid_targets, criterion, device,
+                            batch_size=config['batch_size']
+                        )
+                        
+                        scheduler.step(val_metrics['mae'])
+                        
+                        if val_metrics['mae'] < best_val_mae:
+                            best_val_mae = val_metrics['mae']
+                            best_model_state = copy.deepcopy(model.state_dict())
+                            patience_counter = 0
+                        else:
+                            patience_counter += 1
+                        
+                        progress.update(
+                            task, advance=1,
+                            description=f"[cyan]{name} - Val MAE: {val_metrics['mae']:.2f} (Best: {best_val_mae:.2f})"
+                        )
+                        
+                        if patience_counter >= config['patience']:
+                            break
+                
+                train_time = time.time() - start_time
+                
+                if best_model_state is not None:
+                    model.load_state_dict(best_model_state)
+                
+                model.eval()
+                test_loss, test_metrics = evaluate_counting(
+                    model, test_sequences, test_targets, criterion, device,
+                    batch_size=config['batch_size']
+                )
+                
+                all_results[name]['test_mae'].append(test_metrics['mae'])
+                all_results[name]['test_rmse'].append(test_metrics['rmse'])
+                all_results[name]['test_exact_match'].append(test_metrics['exact_match'])
+                all_results[name]['train_time'].append(train_time)
+                all_results[name]['params'] = params
+                
+                console.print(f"[green]OK[/green] {name}: MAE={test_metrics['mae']:.2f}, Exact={test_metrics['exact_match']:.1f}%")
+                
+            except Exception as e:
+                console.print(f"[bold red]Error training {name}:[/bold red] {e}")
+                import traceback
+                traceback.print_exc()
+                continue
     
-    if not results:
-        console.print("[bold red]No models completed training successfully[/bold red]")
-        return
+    # Compute statistics and display results
+    console.print("\n" + "="*80)
+    console.print("[bold magenta]STATISTICAL RESULTS[/bold magenta]")
+    console.print("="*80 + "\n")
     
-    console.print("\n")
-    table = Table(
-        title="🔢 Sparse Event Counting Results",
-        show_header=True,
-        header_style="bold magenta"
-    )
+    table = Table(title=f"Sparse Event Counting Results (N={num_runs} runs)", header_style="bold magenta")
     table.add_column("Model", style="cyan")
-    table.add_column("Parameters", justify="right", style="green")
-    table.add_column("Test MAE", justify="right", style="yellow")
-    table.add_column("Test RMSE", justify="right", style="yellow")
-    table.add_column("Exact Match", justify="right", style="blue")
-    table.add_column("Within ±1", justify="right", style="blue")
-    table.add_column("Train Time", justify="right", style="magenta")
+    table.add_column("Params", justify="right")
+    table.add_column("Test MAE", justify="right")
+    table.add_column("Test RMSE", justify="right")
+    table.add_column("Exact Match", justify="right")
+    table.add_column("Time (s)", justify="right")
     
-    for name, data in results.items():
+    for name in model_names:
+        if not all_results[name]['test_mae']:
+            continue
+        
+        data = all_results[name]
+        mae_mean = np.mean(data['test_mae'])
+        mae_std = np.std(data['test_mae'], ddof=1) if num_runs > 1 else 0.0
+        rmse_mean = np.mean(data['test_rmse'])
+        rmse_std = np.std(data['test_rmse'], ddof=1) if num_runs > 1 else 0.0
+        exact_mean = np.mean(data['test_exact_match'])
+        exact_std = np.std(data['test_exact_match'], ddof=1) if num_runs > 1 else 0.0
+        time_mean = np.mean(data['train_time'])
+        
+        if num_runs > 1:
+            mae_str = f"{mae_mean:.2f} ± {mae_std:.2f}"
+            rmse_str = f"{rmse_mean:.2f} ± {rmse_std:.2f}"
+            exact_str = f"{exact_mean:.1f} ± {exact_std:.1f}"
+        else:
+            mae_str = f"{mae_mean:.2f}"
+            rmse_str = f"{rmse_mean:.2f}"
+            exact_str = f"{exact_mean:.1f}"
+        
         table.add_row(
             name,
             f"{data['params']:,}",
-            f"{data['test_mae']:.2f}",
-            f"{data['test_rmse']:.2f}",
-            f"{data['test_exact_match']:.1f}%",
-            f"{data['test_within_1']:.1f}%",
-            f"{data['train_time']:.0f}s"
+            mae_str,
+            rmse_str,
+            exact_str,
+            f"{time_mean:.0f}"
         )
     
     console.print(table)
     
-    winner = min(results.items(), key=lambda x: x[1]['test_mae'])
-    console.print(f"\n[bold green]🏆 Winner (Lowest MAE): {winner[0]} ({winner[1]['test_mae']:.2f})[/bold green]")
+    if num_runs > 1 and not aru_only:
+        console.print("\n[bold cyan]Statistical Significance Tests (vs GRU baseline)[/bold cyan]\n")
+        from utils.stats import format_comparison_table
+        
+        mae_dict = {name: data['test_mae'] for name, data in all_results.items() if data['test_mae']}
+        console.print("[yellow]Test MAE Comparison:[/yellow]")
+        console.print(format_comparison_table(mae_dict, "MAE", baseline='GRU', lower_is_better=True))
+        
+        console.print("\n[yellow]Exact Match Comparison:[/yellow]")
+        exact_dict = {name: data['test_exact_match'] for name, data in all_results.items() if data['test_exact_match']}
+        console.print(format_comparison_table(exact_dict, "Exact Match", baseline='GRU', lower_is_better=False))
     
-    if 'ARU' in results and 'GRU' in results:
-        aru_mae = results['ARU']['test_mae']
-        gru_mae = results['GRU']['test_mae']
-        improvement = ((gru_mae - aru_mae) / gru_mae) * 100
+    if not aru_only and all_results['ARU']['test_mae'] and all_results['GRU']['test_mae']:
+        aru_mean = np.mean(all_results['ARU']['test_mae'])
+        gru_mean = np.mean(all_results['GRU']['test_mae'])
+        improvement = ((gru_mean - aru_mean) / gru_mean) * 100
         console.print(f"\n[cyan]ARU vs GRU:[/cyan] {improvement:+.1f}% improvement (lower is better)")
         if improvement > 10:
-            console.print(
-                "[green]ARU's additive accumulation (π≈1, υ≈1) enables precise counting "
-                "by maintaining running sums![/green]"
-            )
-        elif improvement > 5:
-            console.print(
-                "[dim]ARU shows advantage in maintaining accurate counts over long sequences[/dim]"
-            )
+            console.print("[green]ARU's additive accumulation enables precise counting![/green]")
     
-    console.print(
-        f"\n[bold yellow]💡 Key Insight:[/bold yellow] This is a PURE counting task.\n"
-        f"   ARU can achieve additive accumulation: count_t = count_{{t-1}} + event_t\n"
-        f"   when ρ ≈ 1 (no reset), π ≈ 1 (maintain count), and α ≈ 1 (add detected event).\n"
-        f"   GRU is constrained by z + (1-z) = 1, forcing weighted averaging\n"
-        f"   instead of true addition, making precise counting harder."
-    )
+    console.print(f"\n[green]Benchmark complete![/green]")
+    return all_results
 
 def main():
     parser = argparse.ArgumentParser(
@@ -578,6 +547,7 @@ def main():
                        help='Event density (probability of event per timestep)')
     parser.add_argument('--aru-only', action='store_true',
                        help='Train only ARU (skip baselines for faster testing)')
+    parser.add_argument('--num-runs', type=int, default=5, help='Number of runs with different seeds')
     args = parser.parse_args()
     
     if args.epochs:
@@ -589,11 +559,13 @@ def main():
     if args.event_density:
         COUNTING_CONFIG['event_density'] = args.event_density
     
+    COUNTING_CONFIG['num_runs'] = args.num_runs
+    
     console.clear()
     mode_str = " (ARU Only)" if args.aru_only else ""
     console.print(Panel.fit(
         f"[bold cyan]ARU Phase 4: Sparse Event Counting Benchmark{mode_str}[/bold cyan]\n"
-        "[yellow]Pure Additive Accumulation Task[/yellow]\n"
+        f"[yellow]Pure Additive Accumulation Task | Runs: {args.num_runs}[/yellow]\n"
         f"[dim]Epochs: {COUNTING_CONFIG['epochs']} | "
         f"Sequence Length: {COUNTING_CONFIG['sequence_length']} | "
         f"Event Density: {COUNTING_CONFIG['event_density']*100:.1f}%[/dim]",

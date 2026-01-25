@@ -100,34 +100,25 @@ def create_adding_model(model_class, hidden_size, is_aru=False):
 
 
 def run_adding_benchmark(config: dict, seed: int = 42):
-    """Run adding problem benchmark."""
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    
+    """Run adding problem benchmark with multiple seeds for statistical significance."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     console.print(f"\n[green]Device:[/green] {device}")
     
     seq_length = config['seq_length']
+    num_runs = config.get('num_runs', 1)
     console.print(f"[cyan]Sequence length:[/cyan] {seq_length}")
+    console.print(f"[cyan]Number of runs:[/cyan] {num_runs}")
     console.print(f"[cyan]Baseline MSE (predict 1.0):[/cyan] ~0.167\n")
     
-    # Generate data
+    # Generate data (same for all runs)
     console.print("[cyan]Generating data...[/cyan]")
     train_x, train_y = generate_adding_data(config['train_samples'], seq_length, seed)
     val_x, val_y = generate_adding_data(config['val_samples'], seq_length, seed + 1)
     test_x, test_y = generate_adding_data(config['test_samples'], seq_length, seed + 2)
     
-    train_dataset = TensorDataset(torch.from_numpy(train_x), torch.from_numpy(train_y))
-    val_dataset = TensorDataset(torch.from_numpy(val_x), torch.from_numpy(val_y))
-    test_dataset = TensorDataset(torch.from_numpy(test_x), torch.from_numpy(test_y))
+    console.print(f"[green]✓[/green] Generated {config['train_samples']:,} train, {config['val_samples']:,} val, {config['test_samples']:,} test samples\n")
     
-    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=config['batch_size'])
-    test_loader = DataLoader(test_dataset, batch_size=config['batch_size'])
-    
-    console.print(f"[green]✓[/green] Generated {config['train_samples']:,} train, {config['val_samples']:,} val, {config['test_samples']:,} test samples")
-    
-    # Models (ordered: RNN, GRU, ARU, LSTM)
+    # Models
     all_models = [
         ('ARU', ARU, True),
         ('GRU', ManualGRU, False),
@@ -140,157 +131,184 @@ def run_adding_benchmark(config: dict, seed: int = 42):
     else:
         models = all_models
     
-    results = {}
+    # Store results across all runs
+    all_results = {name: {'test_mse': [], 'train_time': []} for name, _, _ in models}
     
-    for name, model_class, is_aru in models:
-        try:
-            model = create_adding_model(model_class, config['hidden_size'], is_aru).to(device)
-            criterion = nn.MSELoss()
-            optimizer = optim.Adam(model.parameters(), lr=config['lr'])
-            
-            params = count_parameters(model)
-            console.print(f"\n[bold cyan]Training {name}[/bold cyan]")
-            console.print(f"Parameters: {params:,}")
-            
-            best_val_mse = float('inf')
-            patience_counter = 0
-            start_time = time.time()
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                TimeElapsedColumn(),
-                console=console
-            ) as progress:
-                task = progress.add_task(f"[cyan]{name}", total=config['epochs'])
+    # Run each model multiple times
+    for run_idx in range(num_runs):
+        run_seed = seed + 1000 * (run_idx + 1)
+        console.print(f"\n[bold yellow]{'='*60}[/bold yellow]")
+        console.print(f"[bold yellow]Run {run_idx + 1}/{num_runs} (seed={run_seed})[/bold yellow]")
+        console.print(f"[bold yellow]{'='*60}[/bold yellow]\n")
+        
+        torch.manual_seed(run_seed)
+        np.random.seed(run_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(run_seed)
+        
+        train_dataset = TensorDataset(torch.from_numpy(train_x), torch.from_numpy(train_y))
+        val_dataset = TensorDataset(torch.from_numpy(val_x), torch.from_numpy(val_y))
+        test_dataset = TensorDataset(torch.from_numpy(test_x), torch.from_numpy(test_y))
+        
+        train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=config['batch_size'])
+        test_loader = DataLoader(test_dataset, batch_size=config['batch_size'])
+        
+        for name, model_class, is_aru in models:
+            try:
+                model = create_adding_model(model_class, config['hidden_size'], is_aru).to(device)
+                criterion = nn.MSELoss()
+                optimizer = optim.Adam(model.parameters(), lr=config['lr'])
                 
-                for epoch in range(config['epochs']):
-                    # Train
-                    model.train()
-                    train_loss = 0
-                    for x, y in train_loader:
-                        x, y = x.to(device), y.to(device)
-                        optimizer.zero_grad()
-                        out = model(x)
-                        loss = criterion(out, y)
-                        loss.backward()
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                        optimizer.step()
-                        train_loss += loss.item()
-                    train_mse = train_loss / len(train_loader)
+                params = count_parameters(model)
+                
+                if run_idx == 0:
+                    console.print(f"\n[bold cyan]Training {name}[/bold cyan] ({params:,} params)")
+                else:
+                    console.print(f"\n[cyan]Training {name}[/cyan]")
+                
+                best_val_mse = float('inf')
+                patience_counter = 0
+                start_time = time.time()
+                
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                    TimeElapsedColumn(),
+                    console=console
+                ) as progress:
+                    task = progress.add_task(f"[cyan]{name}", total=config['epochs'])
                     
-                    # Validate
-                    model.eval()
-                    val_loss = 0
-                    with torch.no_grad():
-                        for x, y in val_loader:
+                    for epoch in range(config['epochs']):
+                        model.train()
+                        train_loss = 0
+                        for x, y in train_loader:
                             x, y = x.to(device), y.to(device)
+                            optimizer.zero_grad()
                             out = model(x)
-                            val_loss += criterion(out, y).item()
-                    val_mse = val_loss / len(val_loader)
-                    
-                    if val_mse < best_val_mse:
-                        best_val_mse = val_mse
-                        best_state = model.state_dict().copy()
-                        patience_counter = 0
-                    else:
-                        patience_counter += 1
-                    
-                    progress.update(
-                        task, advance=1,
-                        description=f"[cyan]{name} - MSE: {val_mse:.4f} (Best: {best_val_mse:.4f})"
-                    )
-                    
-                    if patience_counter >= config['patience']:
-                        break
-            
-            train_time = time.time() - start_time
-            
-            # Test
-            model.load_state_dict(best_state)
-            model.eval()
-            test_loss = 0
-            with torch.no_grad():
-                for x, y in test_loader:
-                    x, y = x.to(device), y.to(device)
-                    out = model(x)
-                    test_loss += criterion(out, y).item()
-            test_mse = test_loss / len(test_loader)
-            
-            results[name] = {
-                'params': params,
-                'best_val_mse': best_val_mse,
-                'test_mse': test_mse,
-                'train_time': train_time,
-                'solved': test_mse < 0.01  # Consider solved if MSE < 0.01
-            }
-            
-            status = "✓ SOLVED" if test_mse < 0.01 else ("Learning" if test_mse < 0.167 else "Failed")
-            console.print(f"[green]✓[/green] {name}: Test MSE = {test_mse:.4f} [{status}]")
-            
-        except Exception as e:
-            console.print(f"[red]Error training {name}:[/red] {e}")
-            import traceback
-            traceback.print_exc()
+                            loss = criterion(out, y)
+                            loss.backward()
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                            optimizer.step()
+                            train_loss += loss.item()
+                        
+                        model.eval()
+                        val_loss = 0
+                        with torch.no_grad():
+                            for x, y in val_loader:
+                                x, y = x.to(device), y.to(device)
+                                out = model(x)
+                                val_loss += criterion(out, y).item()
+                        val_mse = val_loss / len(val_loader)
+                        
+                        if val_mse < best_val_mse:
+                            best_val_mse = val_mse
+                            best_state = model.state_dict().copy()
+                            patience_counter = 0
+                        else:
+                            patience_counter += 1
+                        
+                        progress.update(
+                            task, advance=1,
+                            description=f"[cyan]{name} - MSE: {val_mse:.4f} (Best: {best_val_mse:.4f})"
+                        )
+                        
+                        if patience_counter >= config['patience']:
+                            break
+                
+                train_time = time.time() - start_time
+                
+                model.load_state_dict(best_state)
+                model.eval()
+                test_loss = 0
+                with torch.no_grad():
+                    for x, y in test_loader:
+                        x, y = x.to(device), y.to(device)
+                        out = model(x)
+                        test_loss += criterion(out, y).item()
+                test_mse = test_loss / len(test_loader)
+                
+                all_results[name]['test_mse'].append(test_mse)
+                all_results[name]['train_time'].append(train_time)
+                all_results[name]['params'] = params
+                
+                status = "✓ SOLVED" if test_mse < 0.01 else ("Learning" if test_mse < 0.167 else "Failed")
+                console.print(f"[green]OK[/green] {name}: MSE={test_mse:.4f} [{status}]")
+                
+            except Exception as e:
+                console.print(f"[red]Error training {name}:[/red] {e}")
+                import traceback
+                traceback.print_exc()
     
-    # Results table
-    console.print("\n")
-    table = Table(title=f"📊 Adding Problem Results (T={seq_length})", header_style="bold magenta")
+    # Compute statistics and display results
+    console.print("\n" + "="*80)
+    console.print("[bold magenta]STATISTICAL RESULTS[/bold magenta]")
+    console.print("="*80 + "\n")
+    
+    table = Table(title=f"Adding Problem Results (T={seq_length}, N={num_runs} runs)", header_style="bold magenta")
     table.add_column("Model", style="cyan")
     table.add_column("Params", justify="right")
     table.add_column("Test MSE", justify="right")
     table.add_column("Status", justify="center")
-    table.add_column("Time", justify="right")
+    table.add_column("Time (s)", justify="right")
     
-    for name, data in sorted(results.items(), key=lambda x: x[1]['test_mse']):
-        status = "✓ Solved" if data['solved'] else ("Learning" if data['test_mse'] < 0.167 else "Failed")
-        color = "green" if data['solved'] else ("yellow" if data['test_mse'] < 0.167 else "red")
+    for name in ['RNN', 'GRU', 'ARU', 'LSTM']:
+        if name not in all_results or not all_results[name]['test_mse']:
+            continue
+        
+        data = all_results[name]
+        mse_mean = np.mean(data['test_mse'])
+        mse_std = np.std(data['test_mse'], ddof=1) if num_runs > 1 else 0.0
+        time_mean = np.mean(data['train_time'])
+        
+        solved = mse_mean < 0.01
+        status = "✓ Solved" if solved else ("Learning" if mse_mean < 0.167 else "Failed")
+        color = "green" if solved else ("yellow" if mse_mean < 0.167 else "red")
+        
+        if num_runs > 1:
+            mse_str = f"{mse_mean:.4f} ± {mse_std:.4f}"
+        else:
+            mse_str = f"{mse_mean:.4f}"
+        
         table.add_row(
             name,
             f"{data['params']:,}",
-            f"{data['test_mse']:.4f}",
+            mse_str,
             f"[{color}]{status}[/{color}]",
-            f"{data['train_time']:.1f}s"
+            f"{time_mean:.1f}"
         )
     
     console.print(table)
+    console.print("\n[dim]Baseline (predict 1.0): MSE ≈ 0.167 | Solved: MSE < 0.01[/dim]")
     
-    console.print("\n[dim]Baseline (predict 1.0): MSE ≈ 0.167[/dim]")
-    console.print("[dim]Solved: MSE < 0.01[/dim]")
+    if num_runs > 1:
+        console.print("\n[bold cyan]Statistical Significance Tests (vs GRU baseline)[/bold cyan]\n")
+        from utils.stats import format_comparison_table
+        mse_dict = {name: data['test_mse'] for name, data in all_results.items() if data['test_mse']}
+        console.print(format_comparison_table(mse_dict, "MSE", baseline='GRU', lower_is_better=True))
     
-    if 'ARU' in results and 'GRU' in results:
-        aru_mse = results['ARU']['test_mse']
-        gru_mse = results['GRU']['test_mse']
-        if aru_mse < gru_mse:
-            improvement = (gru_mse - aru_mse) / gru_mse * 100
+    if all_results['ARU']['test_mse'] and all_results['GRU']['test_mse']:
+        aru_mean = np.mean(all_results['ARU']['test_mse'])
+        gru_mean = np.mean(all_results['GRU']['test_mse'])
+        if aru_mean < gru_mean:
+            improvement = (gru_mean - aru_mean) / gru_mean * 100
             console.print(f"\n[green]ARU beats GRU by {improvement:.1f}% lower MSE[/green]")
     
-    # Save report
-    report_path = os.path.join(project_root, "benchmarks", "phase6", "report.md")
-    with open(report_path, 'w') as f:
-        f.write(f"# Phase 6: Adding Problem (T={seq_length})\n\n")
-        f.write("## Task\n")
-        f.write("Sum two marked numbers from a sequence. Tests long-term memory.\n\n")
-        f.write("## Results\n\n")
-        f.write("| Model | Params | Test MSE | Status |\n")
-        f.write("|-------|--------|----------|--------|\n")
-        for name, data in sorted(results.items(), key=lambda x: x[1]['test_mse']):
-            status = "Solved" if data['solved'] else "Learning" if data['test_mse'] < 0.167 else "Failed"
-            f.write(f"| {name} | {data['params']:,} | {data['test_mse']:.4f} | {status} |\n")
-        f.write("\nBaseline (predict 1.0): MSE ~ 0.167\n")
-    
-    console.print(f"\n[green]✓[/green] Saved report to {report_path}")
+    console.print(f"\n[green]Benchmark complete![/green]")
+    return all_results
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Phase 6: Adding Problem Benchmark')
+    parser = argparse.ArgumentParser(description='Phase 5: Adding Problem Benchmark')
     parser.add_argument('--seq-length', type=int, default=200, help='Sequence length (default: 200)')
     parser.add_argument('--hidden-size', type=int, default=128, help='Hidden size')
     parser.add_argument('--epochs', type=int, default=50, help='Max epochs')
     parser.add_argument('--model', type=str, choices=['ARU', 'GRU', 'LSTM', 'RNN'], help='Single model')
     parser.add_argument('--long', action='store_true', help='Use T=500 (harder)')
+    parser.add_argument('--num-runs', type=int, default=5, help='Number of runs with different seeds')
+    parser.add_argument('--seed', type=int, default=42, help='Base random seed')
     args = parser.parse_args()
     
     # Reduce samples for longer sequences
@@ -310,16 +328,17 @@ def main():
         'val_samples': val_samples,
         'test_samples': test_samples,
         'model_filter': args.model,
+        'num_runs': args.num_runs,
     }
     
     console.print(Panel.fit(
-        "[bold cyan]Phase 6: Adding Problem[/bold cyan]\n"
-        f"[yellow]Sequence Length: {config['seq_length']}[/yellow]\n"
+        "[bold cyan]Phase 5: Adding Problem[/bold cyan]\n"
+        f"[yellow]Sequence Length: {config['seq_length']} | Runs: {config['num_runs']}[/yellow]\n"
         "[dim]Sum two marked numbers - tests long-term memory[/dim]",
         border_style="blue"
     ))
     
-    run_adding_benchmark(config)
+    run_adding_benchmark(config, seed=args.seed)
 
 
 if __name__ == "__main__":

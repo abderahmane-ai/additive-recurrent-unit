@@ -190,3 +190,93 @@ def train_model(
 def count_parameters(model: nn.Module) -> int:
     """Count trainable parameters."""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def run_multiple_seeds(
+    model_fn,
+    train_loader: DataLoader,
+    test_loader: DataLoader,
+    num_runs: int = 5,
+    seeds: list = None,
+    epochs: int = 10,
+    lr: float = 0.001,
+    device: torch.device = None,
+    verbose: bool = False
+) -> Dict:
+    """
+    Run training multiple times with different seeds and collect statistics.
+    
+    Args:
+        model_fn: Function that returns a fresh model instance
+        train_loader: Training data loader
+        test_loader: Test data loader
+        num_runs: Number of runs with different seeds
+        seeds: Optional list of seeds (if None, uses range(num_runs))
+        epochs: Number of epochs per run
+        lr: Learning rate
+        device: Device to run on
+        verbose: Print progress for each run
+    
+    Returns:
+        Dict with aggregated results including all runs and statistics
+    """
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    if seeds is None:
+        seeds = list(range(num_runs))
+    
+    all_test_accs = []
+    all_train_times = []
+    all_final_train_accs = []
+    run_details = []
+    
+    for i, seed in enumerate(seeds[:num_runs]):
+        # Set seed for reproducibility
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+        
+        # Create fresh model
+        model = model_fn()
+        
+        # Train
+        result = train_model(
+            model=model,
+            train_loader=train_loader,
+            test_loader=test_loader,
+            epochs=epochs,
+            lr=lr,
+            device=device,
+            verbose=verbose
+        )
+        
+        all_test_accs.append(result['best_acc'])
+        all_train_times.append(result['train_time'])
+        all_final_train_accs.append(result['final_train_acc'])
+        
+        run_details.append({
+            'seed': seed,
+            'test_acc': result['best_acc'],
+            'train_acc': result['final_train_acc'],
+            'train_time': result['train_time'],
+        })
+        
+        if verbose:
+            print(f"  Run {i+1}/{num_runs} (seed={seed}): Test Acc = {result['best_acc']:.2f}%")
+    
+    # Compute statistics
+    import numpy as np
+    
+    return {
+        'test_accs': all_test_accs,
+        'train_times': all_train_times,
+        'final_train_accs': all_final_train_accs,
+        'mean_test_acc': np.mean(all_test_accs),
+        'std_test_acc': np.std(all_test_accs, ddof=1) if num_runs > 1 else 0.0,
+        'mean_train_time': np.mean(all_train_times),
+        'std_train_time': np.std(all_train_times, ddof=1) if num_runs > 1 else 0.0,
+        'num_runs': num_runs,
+        'seeds': seeds[:num_runs],
+        'run_details': run_details,
+    }

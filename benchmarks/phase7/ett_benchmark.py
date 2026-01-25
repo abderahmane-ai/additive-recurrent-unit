@@ -259,18 +259,18 @@ def evaluate(model, dataloader, device):
 
 
 def run_ett_benchmark(config):
-    """Run ETT benchmark."""
-    
-    torch.manual_seed(config['seed'])
-    np.random.seed(config['seed'])
+    """Run ETT benchmark with multiple seeds for statistical significance."""
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     console.print(f"\n[green]Device:[/green] {device}")
     console.print(f"[cyan]Dataset:[/cyan] {config['dataset']}")
     console.print(f"[cyan]Sequence length:[/cyan] {config['seq_len']}")
-    console.print(f"[cyan]Prediction horizon:[/cyan] {config['pred_len']}\n")
+    console.print(f"[cyan]Prediction horizon:[/cyan] {config['pred_len']}")
     
-    # Load data
+    num_runs = config.get('num_runs', 1)
+    console.print(f"[cyan]Number of runs:[/cyan] {num_runs}\n")
+    
+    # Load data (same for all runs)
     console.print("[cyan]Loading ETT dataset...[/cyan]")
     train_dataset, val_dataset, test_dataset, stats = load_ett_data(
         config['data_path'],
@@ -283,119 +283,106 @@ def run_ett_benchmark(config):
     console.print(f"[green]✓[/green] Val: {len(val_dataset):,} samples")
     console.print(f"[green]✓[/green] Test: {len(test_dataset):,} samples\n")
     
-    # Create dataloaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=config['batch_size'],
-        shuffle=True,
-        num_workers=0
-    )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=config['batch_size'],
-        shuffle=False,
-        num_workers=0
-    )
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=config['batch_size'],
-        shuffle=False,
-        num_workers=0
-    )
-    
-    # Get input size (number of features)
+    # Get input size
     input_size = train_dataset.data.shape[1]
     console.print(f"[dim]Input features: {input_size}[/dim]\n")
     
     # Models to compare
     models_to_run = config.get('models', ['ARU', 'GRU', 'LSTM'])
     
-    results = {}
+    # Store results across all runs
+    all_results = {name: {'test_mse': [], 'test_mae': [], 'train_time': []} for name in models_to_run}
     
-    for model_name in models_to_run:
-        console.print(f"\n[bold cyan]Training {model_name}[/bold cyan]")
+    # Run each model multiple times
+    for run_idx in range(num_runs):
+        run_seed = config['seed'] + 1000 * (run_idx + 1)
+        console.print(f"\n[bold yellow]{'='*60}[/bold yellow]")
+        console.print(f"[bold yellow]Run {run_idx + 1}/{num_runs} (seed={run_seed})[/bold yellow]")
+        console.print(f"[bold yellow]{'='*60}[/bold yellow]\n")
         
-        # Create model
-        model = create_model(
-            model_name,
-            input_size,
-            config['hidden_size'],
-            config['pred_len']
-        ).to(device)
+        torch.manual_seed(run_seed)
+        np.random.seed(run_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(run_seed)
         
-        params = count_parameters(model)
-        console.print(f"Parameters: {params:,}")
+        # Create dataloaders
+        train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
+        val_loader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False, num_workers=0)
+        test_loader = DataLoader(test_dataset, batch_size=config['batch_size'], shuffle=False, num_workers=0)
         
-        # Training setup
-        criterion = nn.MSELoss()
-        optimizer = optim.Adam(model.parameters(), lr=config['lr'])
-        
-        best_val_loss = float('inf')
-        patience_counter = 0
-        best_state = None
-        
-        train_start = time.time()
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            console=console
-        ) as progress:
-            task = progress.add_task(f"[cyan]{model_name}", total=config['epochs'])
+        for model_name in models_to_run:
+            if run_idx == 0:
+                console.print(f"\n[bold cyan]Training {model_name}[/bold cyan]")
+            else:
+                console.print(f"\n[cyan]Training {model_name}[/cyan]")
             
-            for epoch in range(config['epochs']):
-                # Train
-                train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
+            # Create model
+            model = create_model(model_name, input_size, config['hidden_size'], config['pred_len']).to(device)
+            
+            params = count_parameters(model)
+            if run_idx == 0:
+                console.print(f"Parameters: {params:,}")
+            
+            # Training setup
+            criterion = nn.MSELoss()
+            optimizer = optim.Adam(model.parameters(), lr=config['lr'])
+            
+            best_val_loss = float('inf')
+            patience_counter = 0
+            best_state = None
+            
+            train_start = time.time()
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                console=console
+            ) as progress:
+                task = progress.add_task(f"[cyan]{model_name}", total=config['epochs'])
                 
-                # Validate
-                val_mse, val_mae, _, _ = evaluate(model, val_loader, device)
-                
-                if val_mse < best_val_loss:
-                    best_val_loss = val_mse
-                    best_state = model.state_dict().copy()
-                    patience_counter = 0
-                else:
-                    patience_counter += 1
-                
-                progress.update(
-                    task,
-                    advance=1,
-                    description=f"[cyan]{model_name} - Val MSE: {val_mse:.4f} (Best: {best_val_loss:.4f})"
-                )
-                
-                if patience_counter >= config['patience']:
-                    console.print(f"[yellow]Early stopping at epoch {epoch + 1}[/yellow]")
-                    break
-        
-        train_time = time.time() - train_start
-        
-        # Load best model and test
-        model.load_state_dict(best_state)
-        
-        # Test evaluation
-        test_start = time.time()
-        test_mse, test_mae, preds, targets = evaluate(model, test_loader, device)
-        inference_time = time.time() - test_start
-        
-        results[model_name] = {
-            'params': params,
-            'test_mse': test_mse,
-            'test_mae': test_mae,
-            'train_time': train_time,
-            'inference_time': inference_time,
-            'predictions': preds,
-            'targets': targets
-        }
-        
-        console.print(f"[green]✓[/green] {model_name}: Test MSE = {test_mse:.4f}, MAE = {test_mae:.4f}")
+                for epoch in range(config['epochs']):
+                    train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
+                    val_mse, val_mae, _, _ = evaluate(model, val_loader, device)
+                    
+                    if val_mse < best_val_loss:
+                        best_val_loss = val_mse
+                        best_state = model.state_dict().copy()
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
+                    
+                    progress.update(
+                        task,
+                        advance=1,
+                        description=f"[cyan]{model_name} - Val MSE: {val_mse:.4f} (Best: {best_val_loss:.4f})"
+                    )
+                    
+                    if patience_counter >= config['patience']:
+                        break
+            
+            train_time = time.time() - train_start
+            
+            # Load best model and test
+            model.load_state_dict(best_state)
+            test_mse, test_mae, preds, targets = evaluate(model, test_loader, device)
+            
+            all_results[model_name]['test_mse'].append(test_mse)
+            all_results[model_name]['test_mae'].append(test_mae)
+            all_results[model_name]['train_time'].append(train_time)
+            all_results[model_name]['params'] = params
+            
+            console.print(f"[green]OK[/green] {model_name}: MSE={test_mse:.4f}, MAE={test_mae:.4f}")
     
-    # Results table
-    console.print("\n")
+    # Compute statistics and display results
+    console.print("\n" + "="*80)
+    console.print("[bold magenta]STATISTICAL RESULTS[/bold magenta]")
+    console.print("="*80 + "\n")
+    
     table = Table(
-        title=f"📊 ETT {config['dataset']} - Horizon {config['pred_len']}",
+        title=f"ETT {config['dataset']} - Horizon {config['pred_len']} (N={num_runs} runs)",
         header_style="bold magenta"
     )
     table.add_column("Model", style="cyan")
@@ -403,34 +390,62 @@ def run_ett_benchmark(config):
     table.add_column("Test MSE", justify="right")
     table.add_column("Test MAE", justify="right")
     table.add_column("Train Time", justify="right")
-    table.add_column("Inference", justify="right")
     
-    for name, data in sorted(results.items(), key=lambda x: x[1]['test_mse']):
+    for name in models_to_run:
+        if not all_results[name]['test_mse']:
+            continue
+        
+        data = all_results[name]
+        mse_mean = np.mean(data['test_mse'])
+        mse_std = np.std(data['test_mse'], ddof=1) if num_runs > 1 else 0.0
+        mae_mean = np.mean(data['test_mae'])
+        mae_std = np.std(data['test_mae'], ddof=1) if num_runs > 1 else 0.0
+        time_mean = np.mean(data['train_time'])
+        
+        if num_runs > 1:
+            mse_str = f"{mse_mean:.4f} ± {mse_std:.4f}"
+            mae_str = f"{mae_mean:.4f} ± {mae_std:.4f}"
+        else:
+            mse_str = f"{mse_mean:.4f}"
+            mae_str = f"{mae_mean:.4f}"
+        
         table.add_row(
             name,
             f"{data['params']:,}",
-            f"{data['test_mse']:.4f}",
-            f"{data['test_mae']:.4f}",
-            f"{data['train_time']:.1f}s",
-            f"{data['inference_time']:.2f}s"
+            mse_str,
+            mae_str,
+            f"{time_mean:.1f}s"
         )
     
     console.print(table)
     console.print("\n[dim]Lower MSE/MAE is better[/dim]")
     
-    # Compare ARU vs GRU
-    if 'ARU' in results and 'GRU' in results:
-        aru_mse = results['ARU']['test_mse']
-        gru_mse = results['GRU']['test_mse']
+    if num_runs > 1:
+        console.print("\n[bold cyan]Statistical Significance Tests (vs GRU baseline)[/bold cyan]\n")
+        from utils.stats import format_comparison_table
         
-        if aru_mse < gru_mse:
-            improvement = (gru_mse - aru_mse) / gru_mse * 100
+        mse_dict = {name: data['test_mse'] for name, data in all_results.items() if data['test_mse']}
+        console.print("[yellow]Test MSE Comparison:[/yellow]")
+        console.print(format_comparison_table(mse_dict, "MSE", baseline='GRU', lower_is_better=True))
+        
+        console.print("\n[yellow]Test MAE Comparison:[/yellow]")
+        mae_dict = {name: data['test_mae'] for name, data in all_results.items() if data['test_mae']}
+        console.print(format_comparison_table(mae_dict, "MAE", baseline='GRU', lower_is_better=True))
+    
+    # Compare ARU vs GRU
+    if 'ARU' in all_results and 'GRU' in all_results and all_results['ARU']['test_mse']:
+        aru_mean = np.mean(all_results['ARU']['test_mse'])
+        gru_mean = np.mean(all_results['GRU']['test_mse'])
+        
+        if aru_mean < gru_mean:
+            improvement = (gru_mean - aru_mean) / gru_mean * 100
             console.print(f"\n[green]🎯 ARU outperforms GRU by {improvement:.1f}%![/green]")
         else:
-            diff = (aru_mse - gru_mse) / gru_mse * 100
+            diff = (aru_mean - gru_mean) / gru_mean * 100
             console.print(f"\n[yellow]⚠️  GRU outperforms ARU by {diff:.1f}%[/yellow]")
     
-    return results
+    console.print(f"\n[green]Benchmark complete![/green]")
+    return all_results
 
 
 def main():
@@ -460,6 +475,7 @@ def main():
     parser.add_argument('--models', type=str, nargs='+',
                        default=['ARU', 'GRU', 'LSTM'],
                        help='Models to benchmark')
+    parser.add_argument('--num-runs', type=int, default=5, help='Number of runs with different seeds')
     
     args = parser.parse_args()
     
