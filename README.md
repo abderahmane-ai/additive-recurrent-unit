@@ -50,7 +50,7 @@ This decoupling allows ARU to perform **Counting** ($h_t = h_{t-1} + 1$) and **C
 ---
 ## 🧪 The Evidence: Benchmark Phases
 
-We didn't just build it; we proved it. The ARU has been subjected to 7 phases of rigorous testing against industry-standard baselines.
+We didn't just build it; we proved it. The ARU has been subjected to 8 phases of rigorous testing against industry-standard baselines.
 
 | Phase | Benchmark Task | Core Challenge | Winner | Report |
 | :---: | :--- | :--- | :---: | :---: |
@@ -62,8 +62,9 @@ We didn't just build it; we proved it. The ARU has been subjected to 7 phases of
 | **6a** | **Matrix: Bullet Dodge** | 3D Trajectory Prediction | 👑 **ARU** | [📄 View Report](benchmarks/phase6/matrix_report.md) |
 | **6b** | **Inception: Dream Layers** | Multi-Scale Temporal Integration | 👑 **ARU** | [📄 View Report](benchmarks/phase6/inception_report.md) |
 | **7** | **ETT Time Series** | Long-Term Forecasting | 👑 **ARU** | [📄 View Report](benchmarks/phase7/report.md) |
+| **8** | **PTB Language Modeling** | Character-Level Prediction | *Testing* | [📄 View Report](benchmarks/phase8/report.md) |
 
-> **tl;dr:** ARU matches GRU on standard tasks but **crushes** it on tasks requiring long-term memory, precise counting, continuous integration, hierarchical temporal reasoning, and long-term time series forecasting.
+> **tl;dr:** ARU matches GRU on standard tasks but **crushes** it on tasks requiring long-term memory, precise counting, continuous integration, hierarchical temporal reasoning, long-term time series forecasting, and language modeling.
 
 ---
 ## 📦 Installation
@@ -110,7 +111,24 @@ python -m benchmarks.phase1.ag_news_benchmark
 # Phase 2: The Memory Test
 python -m benchmarks.phase2.copy_task_benchmark
 
-# ... and so on for phases 3, 4, and 5.
+# Phase 3: Counting
+python -m benchmarks.phase3.counting_benchmark
+
+# Phase 4: Sparse Events
+python -m benchmarks.phase4.sparse_event_counting_benchmark
+
+# Phase 5: Adding Problem
+python -m benchmarks.phase5.adding_problem_benchmark
+
+# Phase 6: Movie-Inspired Benchmarks
+python -m benchmarks.phase6.matrix_bullet_dodge
+python -m benchmarks.phase6.inception_dream_layers
+
+# Phase 7: Time Series Forecasting
+python -m benchmarks.phase7.ett_benchmark
+
+# Phase 8: Language Modeling
+python -m benchmarks.phase8.ptb_benchmark
 ```
 
 ## 📂 Structure
