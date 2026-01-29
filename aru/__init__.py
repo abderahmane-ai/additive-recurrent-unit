@@ -19,17 +19,21 @@ Usage:
 """
 
 from aru.model import ARU, create_aru_classifier, create_aru_encoder, aru_loss
+from aru.hierarchical import HARU, create_haru_classifier, create_haru_encoder
 from aru.baselines import ManualGRU, ManualLSTM, ManualRNN
 
 __version__ = "0.1.0"
 __author__ = "Abderahmane Ainouche"
 __all__ = [
-    "ARU", 
+    "ARU",
+    "HARU",
     "ManualGRU", 
     "ManualLSTM", 
     "ManualRNN", 
     "create_aru_classifier",
     "create_aru_encoder",
+    "create_haru_classifier",
+    "create_haru_encoder",
     "aru_loss"
 ]
 
