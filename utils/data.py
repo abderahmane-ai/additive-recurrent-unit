@@ -198,3 +198,42 @@ def load_ag_news_dataset(
     y_test = torch.tensor(test_data['label'])
     
     return X_train, y_train, X_test, y_test, vocab
+
+
+import numpy as np
+
+
+def generate_counting_data(
+    num_sequences: int,
+    seq_length: int,
+    event_density: float = 0.1,
+    seed: Optional[int] = None
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Generate counting task dataset.
+    
+    Task: Count the number of 1's in a binary sequence.
+    
+    Args:
+        num_sequences: Number of sequences to generate
+        seq_length: Length of each sequence
+        event_density: Probability of a "1" at each position (default 10%)
+        seed: Random seed for reproducibility
+    
+    Returns:
+        inputs: Binary sequences of shape (num_sequences, seq_length, 1)
+        targets: Count of 1's in each sequence, shape (num_sequences,)
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+    # Generate binary sequences with given density
+    inputs = (np.random.rand(num_sequences, seq_length) < event_density).astype(np.float32)
+    
+    # Target is the count of 1s
+    targets = inputs.sum(axis=1).astype(np.float32)
+    
+    # Reshape inputs for RNN: (batch, seq_len, 1)
+    inputs = inputs[:, :, np.newaxis]
+    
+    return inputs, targets
