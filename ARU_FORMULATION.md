@@ -33,17 +33,17 @@ $$ v_t = \tanh(\mathbf{W}_c x_t + \mathbf{b}_c) $$
 ### II. Reset Gate ($\rho$)
 Determines the global viability of the memory trace. A value of $\approx 0$ effectively flushes the memory, acting as a "soft reset."
 
-$$ \rho_t = \sigma(\mathbf{W}_{\rho x} x_t + \mathbf{W}_{\rho h} h_{t-1} + \mathbf{b}_\rho) $$
+$$ \rho_t = \sigma(\mathbf{W}_{x\rho} x_t + \mathbf{W}_{h\rho} h_{t-1} + \mathbf{b}_\rho) $$
 
 ### III. Persistence Gate ($\pi$)
 Regulates the retention of prior knowledge. This gate determines what fraction of $h_{t-1}$ survives to the current step.
 
-$$ \pi_t = \sigma(\mathbf{W}_{\pi x} x_t + \mathbf{W}_{\pi h} h_{t-1} + \mathbf{b}_\pi) $$
+$$ \pi_t = \sigma(\mathbf{W}_{x\pi} x_t + \mathbf{W}_{h\pi} h_{t-1} + \mathbf{b}_\pi) $$
 
 ### IV. Accumulation Gate ($\alpha$)
 Controls the magnitude of new information uptake. It acts as a volume knob for the candidate signal $v_t$.
 
-$$ \alpha_t = \sigma(\mathbf{W}_{\alpha x} x_t + \mathbf{W}_{\alpha h} h_{t-1} + \mathbf{b}_\alpha) $$
+$$ \alpha_t = \sigma(\mathbf{W}_{x\alpha} x_t + \mathbf{W}_{h\alpha} h_{t-1} + \mathbf{b}_\alpha) $$
 
 ### V. Additive Composition
 The core mechanism where history and new occurrences are linearly superimposed, weighted by their respective control gates.
@@ -65,9 +65,9 @@ $$
 \text{ARU}(x_t, h_{t-1}) \triangleq \left\{
 \begin{aligned}
 v_t &= \tanh(\mathbf{W}_{c} x_t + \mathbf{b}_c) \\
-\rho_t &= \sigma(\mathbf{W}_{\rho x} x_t + \mathbf{W}_{\rho h} h_{t-1} + \mathbf{b}_\rho) \\
-\pi_t &= \sigma(\mathbf{W}_{\pi x} x_t + \mathbf{W}_{\pi h} h_{t-1} + \mathbf{b}_\pi) \\
-\alpha_t &= \sigma(\mathbf{W}_{\alpha x} x_t + \mathbf{W}_{\alpha h} h_{t-1} + \mathbf{b}_\alpha) \\
+\rho_t &= \sigma(\mathbf{W}_{x\rho} x_t + \mathbf{W}_{h\rho} h_{t-1} + \mathbf{b}_\rho) \\
+\pi_t &= \sigma(\mathbf{W}_{x\pi} x_t + \mathbf{W}_{h\pi} h_{t-1} + \mathbf{b}_\pi) \\
+\alpha_t &= \sigma(\mathbf{W}_{x\alpha} x_t + \mathbf{W}_{h\alpha} h_{t-1} + \mathbf{b}_\alpha) \\
 h_t &= \rho_t \odot (\pi_t \odot h_{t-1} + \alpha_t \odot v_t)
 \end{aligned}
 \right.
