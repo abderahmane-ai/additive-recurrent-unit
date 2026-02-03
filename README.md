@@ -9,6 +9,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Status: Experimental](https://img.shields.io/badge/Status-Experimental-blueviolet?style=for-the-badge)]()
+[![ResearchGate](https://img.shields.io/badge/ResearchGate-00CCBB?style=for-the-badge&logo=ResearchGate&logoColor=white)](https://doi.org/10.13140/RG.2.2.18700.58241)
 [![Built With: Passion](https://img.shields.io/badge/Built%20With-Passion-ff69b4?style=for-the-badge)]()
 
 **ARU** is a next-generation Recurrent Neural Network architecture that challenges the status quo of gated sequence modeling. It decouples **memory retention** from **information injection**, achieving true additive accumulation—a feat that standard GRUs and LSTMs struggle to perform mathematically.
@@ -159,9 +160,12 @@ If you use ARU in your research or project, please cite:
   year = {2025},
   publisher = {GitHub},
   journal = {GitHub repository},
-  howpublished = {\url{https://github.com/abderahmane-ai/additive-recurrent-unit}}
+  howpublished = {\url{https://github.com/abderahmane-ai/additive-recurrent-unit}},
+  note = {Available on ResearchGate: \url{https://doi.org/10.13140/RG.2.2.18700.58241}}
 }
 ```
+
+**Paper available on ResearchGate:** [10.13140/RG.2.2.18700.58241](https://doi.org/10.13140/RG.2.2.18700.58241)
 
 ## 📜 License
 
