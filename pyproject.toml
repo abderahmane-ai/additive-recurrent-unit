@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "additive-recurrent-unit"
+version = "0.1.0"
+description = "ARU: Additive Recurrent Unit - A next-generation RNN architecture with decoupled memory retention and information injection"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Abderahmane Ainouche", email = "abderahmane.ainouche.ai@gmail.com"}
+]
+maintainers = [
+    {name = "Abderahmane Ainouche", email = "abderahmane.ainouche.ai@gmail.com"}
+]
+keywords = [
+    "deep learning",
+    "recurrent neural networks",
+    "rnn",
+    "pytorch",
+    "sequence modeling",
+    "machine learning",
+    "artificial intelligence"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "torch>=1.10.0",
+    "numpy>=1.21.0",
+    "pandas>=1.3.0",
+    "rich>=10.0.0",
+    "matplotlib>=3.4.0",
+    "seaborn>=0.11.0",
+    "datasets>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+    "black>=22.0.0",
+    "flake8>=4.0.0",
+    "mypy>=0.950",
+    "isort>=5.10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/abderahmane-ai/additive-recurrent-unit"
+Repository = "https://github.com/abderahmane-ai/additive-recurrent-unit"
+"Bug Tracker" = "https://github.com/abderahmane-ai/additive-recurrent-unit/issues"
+Documentation = "https://github.com/abderahmane-ai/additive-recurrent-unit#readme"
+
+[tool.setuptools]
+packages = ["aru"]
+
+[tool.setuptools.package-data]
+aru = ["py.typed"]
+
+[tool.black]
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

@@ -5,6 +5,7 @@
 
 > **"Why do we force our models to forget in order to learn?"**
 
+[![PyPI](https://img.shields.io/pypi/v/additive-recurrent-unit?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/additive-recurrent-unit/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Status: Experimental](https://img.shields.io/badge/Status-Experimental-blueviolet?style=for-the-badge)]()
@@ -71,10 +72,18 @@ We didn't just build it; we proved it. The ARU has been subjected to 7 phases of
 ---
 ## 📦 Installation
 
+### PyPI (Recommended)
+
+```bash
+pip install additive-recurrent-unit
+```
+
+### From Source
+
 ```bash
 git clone https://github.com/abderahmane-ai/additive-recurrent-unit.git
 cd additive-recurrent-unit
-pip install torch rich
+pip install -e .
 ```
 
 ## 💻 Usage

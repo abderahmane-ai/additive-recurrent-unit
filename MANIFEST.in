@@ -1,0 +1,15 @@
+include README.md
+include LICENSE
+include requirements.txt
+include ARU_FORMULATION.md
+include ARU.png
+recursive-include aru *.py
+recursive-include benchmarks *.py *.md
+recursive-include utils *.py
+recursive-include ablations *.py
+recursive-include data *
+prune .git
+prune __pycache__
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude .DS_Store
