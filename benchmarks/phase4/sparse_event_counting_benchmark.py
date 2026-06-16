@@ -45,7 +45,7 @@ sys.path.insert(0, project_root)
 
 from aru import ARU
 from aru.baselines import ManualGRU, ManualLSTM, ManualRNN
-from utils.training import count_parameters
+from utils.training import count_parameters, set_seed
 
 console = Console()
 
@@ -247,9 +247,8 @@ def train_epoch_counting(model, sequences, targets, criterion, optimizer, device
         if outputs.dim() > 1 and outputs.size(-1) == 1:
             outputs = outputs.squeeze(-1)
         
-        # Ensure outputs are positive (ReLU) since counts are non-negative
-        outputs = torch.nn.functional.relu(outputs)
-        
+        # Compute loss directly; the model learns to produce non-negative counts
+        # from the MSE loss signal. Avoid ReLU which kills gradients at zero.
         loss = criterion(outputs, batch_targets)
         
         # Check for NaN
@@ -301,15 +300,15 @@ def evaluate_counting(model, sequences, targets, criterion, device, batch_size=6
             if outputs.dim() > 1 and outputs.size(-1) == 1:
                 outputs = outputs.squeeze(-1)
             
-            # Ensure outputs are positive
-            outputs = torch.nn.functional.relu(outputs)
-            
+            # Clamp for metric integrity (counts cannot be negative)
+            outputs_for_metrics = torch.clamp(outputs, min=0)
+
             loss = criterion(outputs, batch_targets)
-            
+
             total_loss += loss.item()
             num_batches += 1
-            
-            all_predictions.append(outputs)
+
+            all_predictions.append(outputs_for_metrics)
             all_targets.append(batch_targets)
     
     avg_loss = total_loss / num_batches
@@ -358,10 +357,8 @@ def run_counting_benchmark(config: dict, seed: int = 42, aru_only: bool = False)
         console.print(f"[bold yellow]Run {run_idx + 1}/{num_runs} (seed={run_seed})[/bold yellow]")
         console.print(f"[bold yellow]{'='*60}[/bold yellow]\n")
         
-        torch.manual_seed(run_seed)
-        np.random.seed(run_seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(run_seed)
+        # Set seed for reproducibility
+        set_seed(run_seed)
         
         models = {
             'ARU': ARU(
@@ -370,8 +367,8 @@ def run_counting_benchmark(config: dict, seed: int = 42, aru_only: bool = False)
                 num_classes=output_size,
                 dropout=config['dropout'],
                 use_embedding=True,
-                persistence_init=3.0,
-                accumulation_init=-1.0,
+                persistence_init=2.0,
+                accumulation_init=0.0,
             ),
         }
         

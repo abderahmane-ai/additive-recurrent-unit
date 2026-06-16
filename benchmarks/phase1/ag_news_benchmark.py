@@ -32,7 +32,7 @@ sys.path.insert(0, project_root)
 from aru import ARU
 from aru.baselines import ManualGRU, ManualLSTM, ManualRNN
 from utils.data import load_ag_news_dataset
-from utils.training import train_epoch, evaluate, count_parameters, test_and_print_samples
+from utils.training import train_epoch, evaluate, count_parameters, test_and_print_samples, set_seed
 
 console = Console()
 
@@ -89,10 +89,8 @@ def run_ag_news_benchmark(config: dict, seed: int = 42):
         console.print(f"[bold yellow]{'='*60}[/bold yellow]\n")
         
         # Set seed for this run
-        torch.manual_seed(run_seed)
-        np.random.seed(run_seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(run_seed)
+        # Set seed for reproducibility
+        set_seed(run_seed)
         
         full_train_dataset = TensorDataset(X_train, y_train)
         train_size = int(0.9 * len(full_train_dataset))

@@ -42,7 +42,7 @@ sys.path.insert(0, project_root)
 
 from aru import ARU
 from aru.baselines import ManualGRU, ManualLSTM, ManualRNN
-from utils.training import count_parameters
+from utils.training import count_parameters, set_seed
 
 console = Console()
 
@@ -274,11 +274,9 @@ def run_copy_task_benchmark(config: dict, seed: int = 42):
         console.print(f"[bold yellow]Run {run_idx + 1}/{num_runs} (seed={run_seed})[/bold yellow]")
         console.print(f"[bold yellow]{'='*60}[/bold yellow]\n")
         
-        torch.manual_seed(run_seed)
-        np.random.seed(run_seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(run_seed)
-        
+        # Set seed for reproducibility
+        set_seed(run_seed)
+
         models = {
             'ARU': ARU(input_size, config['hidden_size'], num_classes=output_size, dropout=config['dropout'], use_embedding=True),
             'GRU': ManualGRU(input_size, config['hidden_size'], num_classes=output_size, dropout=config['dropout'], use_embedding=True),

@@ -87,6 +87,20 @@ class ARU(nn.Module):
         ρ≈1, π≈0, α≈1: Replace (h_t ≈ v_t)
         ρ≈1, π≈1, α≈0: Maintain (h_t ≈ h_{t-1})
     
+    Gradient flow note:
+        The gradient through the hidden state is scaled by rho * pi at each step.
+        Over T steps, gradients are scaled by ∏(rho_t * pi_t). When gates are near 1
+        (the default initialization), this provides a near-linear gradient path.
+        When gates close, gradient attenuation is multiplicative — this is the
+        intended behavior (selective forgetting should also forget gradients).
+
+        For comparison: LSTM's cell state provides c_t = f_t * c_{t-1} + i_t * g_t,
+        which has a pure additive path when f_t=1, giving gradient scaling of exactly 1
+        through the cell state. ARU trades this unconditional gradient highway for fully
+        decoupled gates — rho and pi can independently control erasure and retention
+        without the coupling constraint of LSTM's f and i gates (which sum to 1 when
+        the output gate is omitted).
+
     Args:
         input_size: Vocabulary size (use_embedding=True) or feature dim.
         hidden_size: Hidden state dimension.
@@ -145,15 +159,20 @@ class ARU(nn.Module):
         if use_layer_norm:
             self.cand_norm = nn.LayerNorm(hidden_size)
         
-        # Gate projections (split for pre-computation optimization)
-        self.gate_x_proj = nn.Linear(self.gate_input_size, hidden_size * 3, bias=True)
-        self.gate_h_proj = nn.Linear(hidden_size, hidden_size * 3, bias=False)
+        # Independent gate projections — each gate gets its own transformation
+        # This ensures truly decoupled retention, persistence, and accumulation
+        self.rho_x_proj = nn.Linear(self.gate_input_size, hidden_size, bias=True)
+        self.pi_x_proj = nn.Linear(self.gate_input_size, hidden_size, bias=True)
+        self.alpha_x_proj = nn.Linear(self.gate_input_size, hidden_size, bias=True)
+        self.rho_h_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.pi_h_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.alpha_h_proj = nn.Linear(hidden_size, hidden_size, bias=False)
         
         # Gate bias initialization
         with torch.no_grad():
-            self.gate_x_proj.bias[0:hidden_size].fill_(reset_init)
-            self.gate_x_proj.bias[hidden_size:2*hidden_size].fill_(persistence_init)
-            self.gate_x_proj.bias[2*hidden_size:3*hidden_size].fill_(accumulation_init)
+            self.rho_x_proj.bias.fill_(reset_init)
+            self.pi_x_proj.bias.fill_(persistence_init)
+            self.alpha_x_proj.bias.fill_(accumulation_init)
         
         self.dropout = nn.Dropout(dropout)
         
@@ -170,7 +189,7 @@ class ARU(nn.Module):
             if 'weight' in name and param.dim() >= 2:
                 if 'embed' not in name:
                     nn.init.orthogonal_(param)
-            elif 'bias' in name and 'gate_x_proj' not in name:
+            elif 'bias' in name and not any(n in name for n in ('rho_x_proj', 'pi_x_proj', 'alpha_x_proj')):
                 nn.init.zeros_(param)
     
     def forward(
@@ -208,8 +227,9 @@ class ARU(nn.Module):
                 gate_input = x
                 cand_input_raw = x
         
-        if self.input_proj is not None or self.use_embedding:
-            embeds = self.dropout(embeds)
+        # Always apply dropout (nn.Dropout(0.0) is a no-op, so this is safe
+        # for benchmarks that use dropout=0.0 and matches baseline behavior)
+        embeds = self.dropout(embeds)
         
         if h0 is None:
             h = torch.zeros(batch_size, self.hidden_size, device=x.device, dtype=embeds.dtype)
@@ -217,13 +237,22 @@ class ARU(nn.Module):
             h = h0
         
         # Pre-compute input-dependent terms (key optimization)
-        gate_x_precomputed = self.gate_x_proj(gate_input)
+        # Each gate independently transforms the input — maintains decoupling
+        rho_x = self.rho_x_proj(gate_input)
+        pi_x = self.pi_x_proj(gate_input)
+        alpha_x = self.alpha_x_proj(gate_input)
+        gate_x_precomputed = torch.cat([rho_x, pi_x, alpha_x], dim=-1)
         cand_proj_out = self.cand_proj(cand_input_raw)
         if self.use_layer_norm:
             cand_proj_out = self.cand_norm(cand_proj_out)
         cand_precomputed = torch.tanh(cand_proj_out)
         
-        gate_h_weight = self.gate_h_proj.weight.t()
+        # Build concatenated hidden-projection weight for single mm in JIT loop
+        gate_h_weight = torch.cat([
+            self.rho_h_proj.weight,
+            self.pi_h_proj.weight,
+            self.alpha_h_proj.weight,
+        ], dim=0).t()
         
         if return_all_states:
             all_states = _aru_recurrence_all_states(
@@ -249,7 +278,10 @@ class ARU(nn.Module):
     
     def _step(self, gates_x: Tensor, v_t: Tensor, h: Tensor) -> Tensor:
         """Single timestep with pre-computed inputs. Used by step()."""
-        gates_h = self.gate_h_proj(h)
+        rho_h = self.rho_h_proj(h)
+        pi_h = self.pi_h_proj(h)
+        alpha_h = self.alpha_h_proj(h)
+        gates_h = torch.cat([rho_h, pi_h, alpha_h], dim=-1)
         gates = torch.sigmoid(gates_x + gates_h)
         rho = gates[:, :self.hidden_size]
         pi = gates[:, self.hidden_size:2*self.hidden_size]
@@ -280,7 +312,10 @@ class ARU(nn.Module):
                 gate_input = x_t
                 cand_input = x_t
         
-        gates_x = self.gate_x_proj(gate_input)
+        rho_x = self.rho_x_proj(gate_input)
+        pi_x = self.pi_x_proj(gate_input)
+        alpha_x = self.alpha_x_proj(gate_input)
+        gates_x = torch.cat([rho_x, pi_x, alpha_x], dim=-1)
         v_input = self.cand_proj(cand_input)
         if self.use_layer_norm:
             v_input = self.cand_norm(v_input)
@@ -333,5 +368,15 @@ def create_aru_encoder(
 
 @torch.jit.script
 def aru_loss(logits: Tensor, targets: Tensor, label_smoothing: float = 0.0) -> Tensor:
-    """Cross-entropy loss with optional label smoothing."""
+    """Cross-entropy loss with optional label smoothing.
+
+    Note: Current benchmarks use nn.CrossEntropyLoss() directly for chunked computation
+    efficiency. This function is available as a convenience for experiments requiring
+    label smoothing.
+
+    Args:
+        logits: Raw model logits (batch, num_classes).
+        targets: Ground-truth class indices (batch,).
+        label_smoothing: Smoothing factor (0.0 = standard CE, >0 softens targets).
+    """
     return F.cross_entropy(logits, targets, label_smoothing=label_smoothing)

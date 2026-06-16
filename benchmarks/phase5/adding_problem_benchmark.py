@@ -41,13 +41,14 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 import os
 import sys
+import copy
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
 from aru import ARU
 from aru.baselines import ManualGRU, ManualLSTM, ManualRNN
-from utils.training import count_parameters
+from utils.training import count_parameters, set_seed
 
 console = Console()
 
@@ -141,10 +142,8 @@ def run_adding_benchmark(config: dict, seed: int = 42):
         console.print(f"[bold yellow]Run {run_idx + 1}/{num_runs} (seed={run_seed})[/bold yellow]")
         console.print(f"[bold yellow]{'='*60}[/bold yellow]\n")
         
-        torch.manual_seed(run_seed)
-        np.random.seed(run_seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(run_seed)
+        # Set seed for reproducibility
+        set_seed(run_seed)
         
         train_dataset = TensorDataset(torch.from_numpy(train_x), torch.from_numpy(train_y))
         val_dataset = TensorDataset(torch.from_numpy(val_x), torch.from_numpy(val_y))
@@ -205,7 +204,7 @@ def run_adding_benchmark(config: dict, seed: int = 42):
                         
                         if val_mse < best_val_mse:
                             best_val_mse = val_mse
-                            best_state = model.state_dict().copy()
+                            best_state = copy.deepcopy(model.state_dict())
                             patience_counter = 0
                         else:
                             patience_counter += 1

@@ -143,9 +143,8 @@ def load_sentiment_dataset(
     train_texts = [clean_text(t) for t in train_data[cfg['text']]]
     test_texts = [clean_text(t) for t in test_split[cfg['text']]]
     
-    # Build vocab covering both for safety in suite
-    full_texts = train_texts + test_texts
-    vocab = build_vocab(full_texts, max_vocab_size)
+    # Build vocab from training data only (avoid test leakage)
+    vocab = build_vocab(train_texts, max_vocab_size)
     print(f"✓ Vocabulary: {len(vocab):,} words")
     
     X_train = torch.tensor([text_to_indices(t, vocab, max_len) for t in train_texts])

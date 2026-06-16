@@ -48,13 +48,14 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 import os
 import sys
+import copy
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
 from aru import ARU
 from aru.baselines import ManualGRU, ManualLSTM, ManualRNN
-from utils.training import count_parameters
+from utils.training import count_parameters, set_seed
 
 console = Console()
 
@@ -295,9 +296,9 @@ def calculate_dodge_metrics(predictions, targets):
 
 def run_matrix_benchmark(config: dict, seed: int = 42):
     """Run Matrix bullet dodge benchmark."""
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    
+    # Set seed for reproducibility
+    set_seed(seed)
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     console.print(f"\n[green]Device:[/green] {device}")
     
@@ -417,7 +418,7 @@ def run_matrix_benchmark(config: dict, seed: int = 42):
                     
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
-                        best_state = model.state_dict().copy()
+                        best_state = copy.deepcopy(model.state_dict())
                         patience_counter = 0
                     else:
                         patience_counter += 1

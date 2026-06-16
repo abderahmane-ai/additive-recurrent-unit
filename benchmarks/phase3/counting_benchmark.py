@@ -41,7 +41,7 @@ sys.path.insert(0, project_root)
 
 from aru import ARU
 from aru.baselines import ManualGRU, ManualLSTM, ManualRNN
-from utils.training import count_parameters
+from utils.training import count_parameters, set_seed
 
 console = Console()
 
@@ -138,10 +138,8 @@ def run_counting_benchmark(config: dict, seed: int = 42):
         for name, model_class, is_aru in models:
             try:
                 # Set seed for this run
-                torch.manual_seed(run_seed)
-                np.random.seed(run_seed)
-                if torch.cuda.is_available():
-                    torch.cuda.manual_seed(run_seed)
+                # Set seed for reproducibility
+                set_seed(run_seed)
                 
                 model = model_class(
                     input_size=1,

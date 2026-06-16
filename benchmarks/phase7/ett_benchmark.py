@@ -27,6 +27,7 @@ import argparse
 import time
 import os
 import sys
+import copy
 import numpy as np
 import torch
 import torch.nn as nn
@@ -42,7 +43,7 @@ sys.path.insert(0, project_root)
 
 from aru import ARU
 from aru.baselines import ManualGRU, ManualLSTM
-from utils.training import count_parameters
+from utils.training import count_parameters, set_seed
 
 console = Console()
 
@@ -300,10 +301,8 @@ def run_ett_benchmark(config):
         console.print(f"[bold yellow]Run {run_idx + 1}/{num_runs} (seed={run_seed})[/bold yellow]")
         console.print(f"[bold yellow]{'='*60}[/bold yellow]\n")
         
-        torch.manual_seed(run_seed)
-        np.random.seed(run_seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(run_seed)
+        # Set seed for reproducibility
+        set_seed(run_seed)
         
         # Create dataloaders
         train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, num_workers=0)
@@ -349,7 +348,7 @@ def run_ett_benchmark(config):
                     
                     if val_mse < best_val_loss:
                         best_val_loss = val_mse
-                        best_state = model.state_dict().copy()
+                        best_state = copy.deepcopy(model.state_dict())
                         patience_counter = 0
                     else:
                         patience_counter += 1

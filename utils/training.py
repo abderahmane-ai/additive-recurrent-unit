@@ -3,6 +3,8 @@ Training utilities for SPMN experiments.
 """
 
 import time
+import random
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -192,6 +194,25 @@ def count_parameters(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
+def set_seed(seed: int, deterministic: bool = True) -> None:
+    """
+    Set random seed for reproducibility across all frameworks.
+
+    Args:
+        seed: Random seed value.
+        deterministic: If True, enable cuDNN determinism (slower but reproducible).
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        if deterministic:
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+
+
 def run_multiple_seeds(
     model_fn,
     train_loader: DataLoader,
@@ -233,10 +254,8 @@ def run_multiple_seeds(
     
     for i, seed in enumerate(seeds[:num_runs]):
         # Set seed for reproducibility
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(seed)
-        
+        set_seed(seed)
+
         # Create fresh model
         model = model_fn()
         
